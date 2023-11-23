@@ -3579,20 +3579,30 @@ ec2_query(Config, Action, Params, ApiVersion) ->
 
 
 % Exported Query Function with parameter handling
+
+-spec query(aws_config(), string(), map()) -> ok_error().
 query(Config, Action, Params) when is_map(Params) ->
-    query(Config, Action, Params, none, ?API_VERSION).
+    query(Config, Action, Params, [], none, ?API_VERSION).
 
+-spec query(aws_config(), string(), map(), list() | atom()) -> ok_error().
+query(Config, Action, Params, Filter) when is_map(Params), is_list(Filter) ->
+    query(Config, Action, Params, Filter, none, ?API_VERSION);
 query(Config, Action, Params, ResponseFormat) when is_map(Params), is_atom(ResponseFormat) ->
-    query(Config, Action, Params, ResponseFormat, ?API_VERSION);
-query(Config, Action, Params, ApiVersion) when is_map(Params) ->
-    query(Config, Action, Params, none, ApiVersion).
+    query(Config, Action, Params, [], ResponseFormat, ?API_VERSION).
 
-query(Config, Action, Params, ResponseFormat, ApiVersion) when is_map(Params), is_atom(ResponseFormat) ->
-    parse_response(do_query(Config, Action, Params, ApiVersion), ResponseFormat).
+-spec query(aws_config(), string(), map(), list(), atom()|string()) -> ok_error().
+query(Config, Action, Params, Filter, ResponseFormat) when is_map(Params), is_atom(ResponseFormat), is_list(Filter) ->
+    query(Config, Action, Params, Filter, ResponseFormat, ?API_VERSION);
+query(Config, Action, Params, Filter, ApiVersion) when is_map(Params), is_list(Filter)->
+    query(Config, Action, Params, Filter, none, ApiVersion).
 
-do_query(Config, Action, MapParams, ApiVersion) -> 
-    Params = prepare_action_params(MapParams),
-    case erlcloud_ec2:ec2_query(Config, Action, Params, ApiVersion) of
+-spec query(aws_config(), string(), map(), list(), atom(), string()) -> ok_error().
+query(Config, Action, Params, Filter, ResponseFormat, ApiVersion) when is_map(Params), is_atom(ResponseFormat) ->
+    parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
+
+do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
+    Params = prepare_action_params(MapParams, Filter),
+    case ec2_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
         {error, _} = E -> E
@@ -3606,13 +3616,13 @@ parse_response({error, _} = ErrRes, _Format) ->
     ErrRes.
 
 %%%%
-
-prepare_action_params(ParamsMap) when is_map(ParamsMap) ->
-    prepare_action_params(ParamsMap, []).
+prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
+    flatten(map_to_kv(ParamsMap));
 prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    Zipped = map_to_kv(ParamsMap), % Convert to list of tuples, with {Key, Value} format for each record
-    Flattend = flatten(Zipped), % Flatten the list of tuples
-    _CleanedParamsWithFilter = Flattend ++ list_to_ec2_filter(Filters). % Add the filters 
+    % Convert to list of tuples, with {Key, Value} format for each record
+    % Flatten the list of tuples
+    FlatList = flatten(map_to_kv(ParamsMap)),
+    FlatList ++ list_to_ec2_filter(Filters). % Add the filters 
 
 map_to_kv(Map) when is_map(Map) ->
     MapList = maps:fold(fun

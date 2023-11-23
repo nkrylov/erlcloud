@@ -207,7 +207,10 @@
          describe_launch_template_versions/4, describe_launch_template_versions/5,
          describe_launch_template_versions/6, describe_launch_template_versions/7,
 
-         describe_launch_template_versions_all/2, describe_launch_template_versions_all/3
+         describe_launch_template_versions_all/2, describe_launch_template_versions_all/3,
+
+        % Generic Action handler
+        query/3, query/4, query/5
     ]).
 
 -import(erlcloud_xml, [get_text/1, get_text/2, get_text/3, get_bool/2, get_list/2, get_integer/2]).
@@ -3573,6 +3576,132 @@ ec2_query(Config, Action, Params, ApiVersion) ->
                                   Config#aws_config.ec2_host,
                                   Config#aws_config.ec2_port,
                                   "/", QParams, "ec2", Config).
+
+
+% Exported Query Function with parameter handling
+query(Config, Action, Params) when is_map(Params) ->
+    query(Config, Action, Params, none, ?API_VERSION).
+
+query(Config, Action, Params, ResponseFormat) when is_map(Params), is_atom(ResponseFormat) ->
+    query(Config, Action, Params, ResponseFormat, ?API_VERSION);
+query(Config, Action, Params, ApiVersion) when is_map(Params) ->
+    query(Config, Action, Params, none, ApiVersion).
+
+query(Config, Action, Params, ResponseFormat, ApiVersion) when is_map(Params), is_atom(ResponseFormat) ->
+    parse_response(do_query(Config, Action, Params, ApiVersion), ResponseFormat).
+
+do_query(Config, Action, MapParams, ApiVersion) -> 
+    Params = prepare_action_params(MapParams),
+    case erlcloud_ec2:ec2_query(Config, Action, Params, ApiVersion) of
+        {ok, Results} ->
+            {ok, Results};
+        {error, _} = E -> E
+    end.
+
+parse_response({ok, Response}, map) ->
+    {ok, _Res} = erlcloud_xml:xml_to_map(Response);
+parse_response({ok, Response}, _) ->
+    {ok, Response};
+parse_response({error, _} = ErrRes, _Format) -> 
+    ErrRes.
+
+%%%%
+
+prepare_action_params(ParamsMap) when is_map(ParamsMap) ->
+    prepare_action_params(ParamsMap, []).
+prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
+    Zipped = map_to_kv(ParamsMap), % Convert to list of tuples, with {Key, Value} format for each record
+    Flattend = flatten(Zipped), % Flatten the list of tuples
+    _CleanedParamsWithFilter = Flattend ++ list_to_ec2_filter(Filters). % Add the filters 
+
+map_to_kv(Map) when is_map(Map) ->
+    MapList = maps:fold(fun
+        (Key, Value, Acc) ->
+            [{Key, map_to_kv(Value)} | Acc]
+    end, [], Map),
+    lists:reverse(MapList);
+map_to_kv(Val) ->
+    Val.
+
+flatten(Proplist) ->
+    lists:flatten(flatten_recursive(Proplist, <<>>)).
+
+flatten_recursive([], _ParentKey) ->
+    [];
+flatten_recursive([{Key, Val} | Rest], ParentKey) ->
+    case {is_list_of_kv_tuples(Val), is_list_not_string(Val)} of
+        {true,_} -> % If Val is a nested record
+            [flatten_recursive(Val, concat_key(ParentKey, Key)) | flatten_recursive(Rest, ParentKey)];
+        {_,true} -> % Is a nested list
+            [generate_kv_tuples(concat_key(ParentKey, Key), Val) | flatten_recursive(Rest, ParentKey)];
+        _ -> % If Val is a non-nested value - Such as a string
+            [{concat_key(ParentKey, Key), Val} | flatten_recursive(Rest, ParentKey)]
+    end.
+
+generate_kv_tuples(Key, Values) ->
+    generate_kv_tuples(Key, Values, 1, []).
+
+generate_kv_tuples(_, [], _, Acc) ->
+    lists:reverse(Acc);
+generate_kv_tuples(Key, [Value | Rest], Index, Acc) ->
+    NewKey = concat_key(Key, integer_to_list(Index)),
+    generate_kv_tuples(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
+
+concat_key(<<>>, Key) when is_bitstring(Key); is_atom(Key)  ->
+    to_bitstring(underscore_to_pascal_case(Key));
+concat_key(<<>>, Key) when is_list(Key) -> 
+    Key;
+concat_key(ParentKey, Key) ->
+    BiParentKey = to_bitstring(underscore_to_pascal_case(ParentKey)),
+    BiKey = to_bitstring(underscore_to_pascal_case(Key)),
+    <<BiParentKey/binary, ".", BiKey/binary>>.
+
+is_string(Val) when is_list(Val)-> 
+    io_lib:printable_list(Val) or io_lib:printable_list(Val);
+is_string(_) ->
+    false.
+ 
+is_list_not_string(Val) when is_list(Val)-> 
+    not is_string(Val);
+is_list_not_string(_) ->
+    false.
+
+is_list_of_kv_tuples(List) when is_list(List) ->
+    lists:all(fun is_tuple/1, List) andalso lists:all(fun is_kv_tuple/1, List);
+is_list_of_kv_tuples(_) ->
+    false.
+
+is_kv_tuple({_, _}) -> true;
+is_kv_tuple(_) -> false.
+
+%%% Conversions
+to_bitstring(In) when is_bitstring(In) ->
+    In;
+to_bitstring(In) when is_list(In) ->
+    list_to_binary(In);
+to_bitstring(In) when is_atom(In) ->
+    erlang:atom_to_binary(In).
+
+capitalize_word([First | Rest]) ->
+    FirstUpper = list_to_uppercase([First]),
+    FirstUpper ++ Rest.
+
+list_to_uppercase(List) ->
+    lists:map(fun(Char) -> 
+        if Char >= $a, Char =< $z -> Char - 32;
+           true -> Char
+        end
+    end, List).
+
+underscore_to_pascal_case(String) when is_list(String) ->
+    Words = string:tokens(String, "_"),
+    PascalCase = lists:map(fun(Word) -> capitalize_word(Word) end, Words),
+    lists:concat(PascalCase);
+underscore_to_pascal_case(String) when is_bitstring(String) ->
+    underscore_to_pascal_case(binary_to_list(String));
+underscore_to_pascal_case(String) when is_atom(String) ->
+    underscore_to_pascal_case(atom_to_list(String)).
+
 
 default_config() -> erlcloud_aws:default_config().
 

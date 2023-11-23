@@ -346,7 +346,9 @@ raw_xml_response(Body) ->
 
 format_xml_response(Body) ->
     try 
-        {ok, element(1, xmerl_scan:string(binary_to_list(Body)))}
+        {ok, element(1, xmerl_scan:string(binary_to_list(Body), [{space, normalize}]))}
+
+        
     catch
         _:_ ->
             {aws_error, {invalid_xml_response_document, Body}}

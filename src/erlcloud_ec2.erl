@@ -3577,7 +3577,6 @@ ec2_query(Config, Action, Params, ApiVersion) ->
                                   Config#aws_config.ec2_port,
                                   "/", QParams, "ec2", Config).
 
-
 % Exported Query Function with parameter handling
 % Query takes in: 
 % - an aws_config
@@ -3613,6 +3612,7 @@ do_query(Config, Action, MapParams, Filter, ApiVersion) ->
         {error, _} = E -> E
     end.
 
+% Takes the query response and turns it into a map if desired
 parse_response({ok, Response}, map) ->
     {ok, _Res} = erlcloud_xml:xml_to_map(Response);
 parse_response({ok, Response}, _) ->
@@ -3620,15 +3620,12 @@ parse_response({ok, Response}, _) ->
 parse_response({error, _} = ErrRes, _Format) -> 
     ErrRes.
 
-%%%%
-
 % Take parameters in map form, as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
 % and a list for filters 
 prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
     map_to_params(ParamsMap);
 prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
     map_to_params(ParamsMap) ++ list_to_ec2_filter(Filters). % Add the filters 
-
 
 % Take a map of parameters as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
 % Handles the formatting of the parameters, such as lists, and nested maps
@@ -3648,8 +3645,6 @@ map_to_params({_Key, []}, _ParentKey) ->
     [];
 map_to_params({Key, Val}, ParentKey) ->
     {concat_key(ParentKey, Key), Val}.
-
-
 
 % Takes a list and keys, reduces the list to a list of {Key.N, Value} tuples, where N is values index + 1
 generate_param_list(Key, Values) ->

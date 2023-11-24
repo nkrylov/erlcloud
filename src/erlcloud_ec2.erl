@@ -3579,6 +3579,11 @@ ec2_query(Config, Action, Params, ApiVersion) ->
 
 
 % Exported Query Function with parameter handling
+% Query takes in: 
+% - an aws_config
+% - an ec2 action string: list of possible are found here https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
+% - a map of query parameters: An example can be found here https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImages.html
+    % NOTE: Any fields in the documentation that end in ".N", may just store a list - No need to include ".N".   
 
 -spec query(aws_config(), string(), map()) -> ok_error().
 query(Config, Action, Params) when is_map(Params) ->
@@ -3616,73 +3621,53 @@ parse_response({error, _} = ErrRes, _Format) ->
     ErrRes.
 
 %%%%
-prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    flatten(map_to_kv(ParamsMap));
-prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    % Convert to list of tuples, with {Key, Value} format for each record
-    % Flatten the list of tuples
-    FlatList = flatten(map_to_kv(ParamsMap)),
-    FlatList ++ list_to_ec2_filter(Filters). % Add the filters 
 
-map_to_kv(Map) when is_map(Map) ->
+% Take parameters in map form, as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
+% and a list for filters 
+prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
+    map_to_params(ParamsMap);
+prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
+    map_to_params(ParamsMap) ++ list_to_ec2_filter(Filters). % Add the filters 
+
+
+% Take a map of parameters as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
+% Handles the formatting of the parameters, such as lists, and nested maps
+map_to_params(Map) ->
+    map_to_params(Map, <<>>).                                        
+map_to_params(Map, ParentKey) when is_map(Map) ->
     MapList = maps:fold(fun
         (Key, Value, Acc) ->
-            [{Key, map_to_kv(Value)} | Acc]
+            [ map_to_params({Key, Value}, ParentKey) | Acc]
     end, [], Map),
-    lists:reverse(MapList);
-map_to_kv(Val) ->
-    Val.
-
-flatten(Proplist) ->
-    lists:flatten(flatten_recursive(Proplist, <<>>)).
-
-flatten_recursive([], _ParentKey) ->
+    lists:flatten(MapList);
+map_to_params({Key, Val}, ParentKey) when is_map(Val) ->
+    map_to_params(Val, concat_key(ParentKey, Key));
+map_to_params({Key, Val}, ParentKey) when is_list(Val) ->          
+    generate_param_list(concat_key(ParentKey, Key), Val);
+map_to_params({_Key, []}, _ParentKey) ->
     [];
-flatten_recursive([{Key, Val} | Rest], ParentKey) ->
-    case {is_list_of_kv_tuples(Val), is_list_not_string(Val)} of
-        {true,_} -> % If Val is a nested record
-            [flatten_recursive(Val, concat_key(ParentKey, Key)) | flatten_recursive(Rest, ParentKey)];
-        {_,true} -> % Is a nested list
-            [generate_kv_tuples(concat_key(ParentKey, Key), Val) | flatten_recursive(Rest, ParentKey)];
-        _ -> % If Val is a non-nested value - Such as a string
-            [{concat_key(ParentKey, Key), Val} | flatten_recursive(Rest, ParentKey)]
-    end.
+map_to_params({Key, Val}, ParentKey) ->
+    {concat_key(ParentKey, Key), Val}.
 
-generate_kv_tuples(Key, Values) ->
-    generate_kv_tuples(Key, Values, 1, []).
 
-generate_kv_tuples(_, [], _, Acc) ->
+
+% Takes a list and keys, reduces the list to a list of {Key.N, Value} tuples, where N is values index + 1
+generate_param_list(Key, Values) ->
+    generate_param_list(Key, Values, 1, []).
+generate_param_list(_, [], _, Acc) ->
     lists:reverse(Acc);
-generate_kv_tuples(Key, [Value | Rest], Index, Acc) ->
+generate_param_list(Key, [Value | Rest], Index, Acc) ->
     NewKey = concat_key(Key, integer_to_list(Index)),
-    generate_kv_tuples(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
+    generate_param_list(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
 
 concat_key(<<>>, Key) when is_bitstring(Key); is_atom(Key)  ->
-    to_bitstring(underscore_to_pascal_case(Key));
+    to_bitstring(Key);
 concat_key(<<>>, Key) when is_list(Key) -> 
     Key;
 concat_key(ParentKey, Key) ->
-    BiParentKey = to_bitstring(underscore_to_pascal_case(ParentKey)),
-    BiKey = to_bitstring(underscore_to_pascal_case(Key)),
+    BiParentKey = to_bitstring(ParentKey),
+    BiKey = to_bitstring(Key),
     <<BiParentKey/binary, ".", BiKey/binary>>.
-
-is_string(Val) when is_list(Val)-> 
-    io_lib:printable_list(Val) or io_lib:printable_list(Val);
-is_string(_) ->
-    false.
- 
-is_list_not_string(Val) when is_list(Val)-> 
-    not is_string(Val);
-is_list_not_string(_) ->
-    false.
-
-is_list_of_kv_tuples(List) when is_list(List) ->
-    lists:all(fun is_tuple/1, List) andalso lists:all(fun is_kv_tuple/1, List);
-is_list_of_kv_tuples(_) ->
-    false.
-
-is_kv_tuple({_, _}) -> true;
-is_kv_tuple(_) -> false.
 
 %%% Conversions
 to_bitstring(In) when is_bitstring(In) ->
@@ -3690,28 +3675,7 @@ to_bitstring(In) when is_bitstring(In) ->
 to_bitstring(In) when is_list(In) ->
     list_to_binary(In);
 to_bitstring(In) when is_atom(In) ->
-    erlang:atom_to_binary(In).
-
-capitalize_word([First | Rest]) ->
-    FirstUpper = list_to_uppercase([First]),
-    FirstUpper ++ Rest.
-
-list_to_uppercase(List) ->
-    lists:map(fun(Char) -> 
-        if Char >= $a, Char =< $z -> Char - 32;
-           true -> Char
-        end
-    end, List).
-
-underscore_to_pascal_case(String) when is_list(String) ->
-    Words = string:tokens(String, "_"),
-    PascalCase = lists:map(fun(Word) -> capitalize_word(Word) end, Words),
-    lists:concat(PascalCase);
-underscore_to_pascal_case(String) when is_bitstring(String) ->
-    underscore_to_pascal_case(binary_to_list(String));
-underscore_to_pascal_case(String) when is_atom(String) ->
-    underscore_to_pascal_case(atom_to_list(String)).
-
+    erlang:atom_to_binary(In, utf8).
 
 default_config() -> erlcloud_aws:default_config().
 

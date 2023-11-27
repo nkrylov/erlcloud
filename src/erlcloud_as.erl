@@ -29,7 +29,9 @@
 
          describe_lifecycle_hooks/1, describe_lifecycle_hooks/2, describe_lifecycle_hooks/3,
          complete_lifecycle_action/4, complete_lifecycle_action/5,
-         record_lifecycle_action_heartbeat/3, record_lifecycle_action_heartbeat/4
+         record_lifecycle_action_heartbeat/3, record_lifecycle_action_heartbeat/4,
+
+         query/4
 ]).
 
 -define(API_VERSION, "2011-01-01").
@@ -81,6 +83,14 @@
 
 -define(RECORD_LIFECYCLE_ACTION_HEARTBEAT_ACTIVITY, 
         "/RecordLifecycleActionHeartbeatResponse/ResponseMetadata/RequestId").
+
+-type filter_list() :: [{string() | atom(),[string()] | string()}] | none.
+-type ok_error() :: ok | {error, term()}.
+-type query_opts() :: #{
+    api_version => string(),
+    filter => filter_list(),
+    response_format => map | none
+}.
 
 
 %% --------------------------------------------------------------------
@@ -771,7 +781,23 @@ as_query(Config, Action, Params, ApiVersion) ->
                                   "/", QParams, "autoscaling", Config).
 
 
+-spec query(aws_config(), string(), map(), query_opts()) -> ok_error().
+query(Config, Action, Params, Opts) ->
+    ApiVersion= maps:get(version, Opts, ?API_VERSION),
+    Filter = maps:get(filter, Opts, []),
+    ResponseFormat = maps:get(response_format, Opts, undef),
+    erlcloud_aws:parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
+
+do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
+    Params = erlcloud_as:prepare_action_params(MapParams, Filter),
+    case as_query(Config, Action, Params, ApiVersion) of
+        {ok, Results} ->
+            {ok, Results};
+        {error, _} = E -> E
+    end.
+
 when_defined(Value, Return, DefaultReturn) ->
+
     case Value of 
         undefined ->
             DefaultReturn;

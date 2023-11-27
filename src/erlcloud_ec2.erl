@@ -210,7 +210,7 @@
          describe_launch_template_versions_all/2, describe_launch_template_versions_all/3,
 
         % Generic Action handler
-        query/3, query/4, query/5
+        query/4
     ]).
 
 -import(erlcloud_xml, [get_text/1, get_text/2, get_text/3, get_bool/2, get_list/2, get_integer/2]).
@@ -273,6 +273,11 @@
 -type ec2_flow_ids() :: [flow_id()].
 -type launch_template_ids() :: [string()].
 
+-type query_opts() :: #{
+    api_version => string(),
+    filter => filter_list(),
+    response_format => map | none
+}.
 
 -spec new(string(), string()) -> aws_config().
 new(AccessKeyID, SecretAccessKey) ->
@@ -1117,7 +1122,7 @@ describe_addresses(PublicIPs, Config) ->
 describe_addresses(PublicIPs, Filters, Config) ->
     Params = lists:append(
         erlcloud_aws:param_list(PublicIPs, "PublicIp"),
-        list_to_ec2_filter(Filters)
+        erlcloud_aws:list_to_filter(Filters)
     ),
     case ec2_query(Config, "DescribeAddresses", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -1193,7 +1198,7 @@ describe_dhcp_options(Filter) when is_list(Filter) orelse Filter =:= none ->
 
 -spec describe_dhcp_options(none | filter_list(), aws_config()) -> ok_error(proplist()).
 describe_dhcp_options(Filter, Config) ->
-    Params = list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeDhcpOptions", Params, ?NEW_API_VERSION) of
         {ok,  Doc} ->
             Path = "/DescribeDhcpOptionsResponse/dhcpOptionsSet/item",
@@ -1344,7 +1349,7 @@ describe_images(ImageIDs, Owner, ExecutableBy, Filters, Config)
     Params = [
               {"ExecutableBy", ExecutableBy}, {"Owner", Owner} |
               erlcloud_aws:param_list(ImageIDs, "ImageId")
-             ] ++ list_to_ec2_filter(Filters),
+             ] ++ erlcloud_aws:list_to_filter(Filters),
     case ec2_query(Config, "DescribeImages", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             {ok, [extract_image(Item) || Item <- xmerl_xpath:string("/DescribeImagesResponse/imagesSet/item", Doc)]};
@@ -1462,7 +1467,8 @@ describe_instances(InstanceIDs, Config)
                         (filter_list(), ec2_max_result(), ec2_token()) -> ok_error([proplist()], ec2_token()).
 describe_instances(InstanceIDs, Filter, Config)
     when is_list(InstanceIDs), is_list(Filter) orelse Filter =:= none , is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(InstanceIDs, "InstanceId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(InstanceIDs, "InstanceId") ++ erlcloud_aws:list_to_filter(Filter),
+    io:format("Params ~p~n", [Params]),
     case ec2_query(Config, "DescribeInstances", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Results = extract_results("DescribeInstancesResponse", "reservationSet", fun extract_reservation/1, Doc),
@@ -1483,7 +1489,7 @@ describe_instances(Filter, MaxResults, NextToken, Config)
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
     Params = [{"MaxResults", MaxResults}, {"NextToken", NextToken}] ++
-             list_to_ec2_filter(Filter),
+             erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeInstances", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Reservations = extract_results("DescribeInstancesResponse", "reservationSet", fun extract_reservation/1, Doc),
@@ -1569,7 +1575,7 @@ describe_instance_status(Params, Filter)
 -spec describe_instance_status(ec2_param_list(), filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_instance_status(Params, Filter, Config)
     when is_list(Params), is_list(Filter) orelse Filter =:= none, is_record(Config, aws_config) ->
-    AllParams = Params ++ list_to_ec2_filter(Filter),
+    AllParams = Params ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeInstanceStatus", AllParams, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Statuses = extract_results("DescribeInstanceStatusResponse", "instanceStatusSet", fun extract_instance_status/1, Doc),
@@ -1596,7 +1602,7 @@ describe_instance_status(Params, Filter, MaxResults, NextToken, Config)
          is_record(Config, aws_config) ->
     AllParams = Params ++
                 [{"MaxResults", MaxResults}, {"NextToken", NextToken}] ++
-                list_to_ec2_filter(Filter),
+                erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeInstanceStatus", AllParams, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Statuses = extract_results(
@@ -1629,7 +1635,7 @@ describe_internet_gateways(Filter, Config) ->
 
 -spec describe_internet_gateways(list(), none | filter_list(), aws_config()) -> ok_error(proplist()).
 describe_internet_gateways(IGWIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(IGWIds, "InternetGatewayId") ++ list_to_ec2_filter(Filter), %
+    Params = erlcloud_aws:param_list(IGWIds, "InternetGatewayId") ++ erlcloud_aws:list_to_filter(Filter), %
     case ec2_query(Config, "DescribeInternetGateways", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             ResultPath = "/DescribeInternetGatewaysResponse/internetGatewaySet/item",
@@ -1692,7 +1698,7 @@ describe_network_acls(Filter, Config) when is_record(Config, aws_config) ->
 
 -spec describe_network_acls([string()], filter_list(), aws_config()) -> ok_error(proplist()).
 describe_network_acls(AclIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(AclIds, "NetworkAclId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(AclIds, "NetworkAclId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeNetworkAcls", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Path = "/DescribeNetworkAclsResponse/networkAclSet/item",
@@ -1724,7 +1730,7 @@ describe_regions(RegionNames, Filter, Config)
 describe_regions(RegionNames, Filter, AllRegions, Config)
   when is_list(RegionNames), is_boolean(AllRegions), is_record(Config, aws_config) ->
     Params = erlcloud_aws:param_list(RegionNames, "RegionName") ++
-        list_to_ec2_filter(Filter) ++
+        erlcloud_aws:list_to_filter(Filter) ++
         [{"AllRegions", AllRegions}],
     case ec2_query(Config, "DescribeRegions", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -1764,7 +1770,7 @@ describe_network_interfaces(NetworkInterfacesIds, Config)
 describe_network_interfaces_filtered(NetworkInterfacesIds, Filter, Config)
     when is_record(Config, aws_config) ->
        Params = lists:append(erlcloud_aws:param_list(NetworkInterfacesIds, "NetworkInterfaceId") ,
-                              list_to_ec2_filter(Filter)),
+                              erlcloud_aws:list_to_filter(Filter)),
        case ec2_query(Config, "DescribeNetworkInterfaces", Params, ?NEW_API_VERSION) of
           {ok, Doc} ->
               NetworkInterfaces = xmerl_xpath:string("/DescribeNetworkInterfacesResponse/networkInterfaceSet/item", Doc),
@@ -1982,7 +1988,7 @@ describe_route_tables(Filter, Config) ->
 
 -spec describe_route_tables([string()], filter_list() | none, aws_config()) -> ok_error([proplist()]).
 describe_route_tables(RouteTableIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(RouteTableIds, "RouteTableId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(RouteTableIds, "RouteTableId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeRouteTables", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Path = "/DescribeRouteTablesResponse/routeTableSet/item",
@@ -2059,7 +2065,7 @@ describe_security_groups(GroupIds, GroupNames, Filters, Config)
        is_list(Filters) orelse Filters =:= none ->
     Params = erlcloud_aws:param_list(GroupIds, "GroupId") ++
         erlcloud_aws:param_list(GroupNames, "GroupName") ++
-        list_to_ec2_filter(Filters),
+        erlcloud_aws:list_to_filter(Filters),
     case ec2_query(Config, "DescribeSecurityGroups", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             {ok, [extract_security_group(Node) ||
@@ -2400,7 +2406,7 @@ describe_subnets(Filter, Config) ->
 -spec describe_subnets(list(), filter_list(), aws_config()) -> ok_error(proplist()).
 describe_subnets(SubnetIds, Filter, Config)
         when is_list(SubnetIds) ->
-    Params = erlcloud_aws:param_list(SubnetIds, "SubnetId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(SubnetIds, "SubnetId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeSubnets", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Subnets = xmerl_xpath:string("/DescribeSubnetsResponse/subnetSet/item", Doc),
@@ -2481,7 +2487,7 @@ describe_vpcs(Filter, Config) ->
 
 -spec describe_vpcs(list(), filter_list() | none, aws_config()) -> ok_error(proplist()).
 describe_vpcs(VpcIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(VpcIds, "VpcId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(VpcIds, "VpcId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeVpcs", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Items = xmerl_xpath:string("/DescribeVpcsResponse/vpcSet/item", Doc),
@@ -3285,7 +3291,7 @@ describe_flow_logs(FlowIDs, Filter, Config)
     when is_list(FlowIDs),
          is_list(Filter) orelse Filter =:= none,
          is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(FlowIDs, "FlowLogId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(FlowIDs, "FlowLogId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeFlowLogs", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Flows = extract_results("DescribeFlowLogsResponse", "flowLogSet", fun extract_flow/1, Doc),
@@ -3314,7 +3320,7 @@ describe_flow_logs(Filter, MaxResults, NextToken, Config)
          is_integer(MaxResults) andalso MaxResults >= ?FLOWS_MR_MIN andalso MaxResults =< ?FLOWS_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
-    Params = list_to_ec2_filter(Filter) ++ [{"MaxResults", MaxResults}, {"NextToken", NextToken}],
+    Params = erlcloud_aws:list_to_filter(Filter) ++ [{"MaxResults", MaxResults}, {"NextToken", NextToken}],
     case ec2_query(Config, "DescribeFlowLogs", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Flows = extract_results("DescribeFlowLogsResponse", "flowLogSet", fun extract_flow/1, Doc),
@@ -3416,7 +3422,7 @@ describe_tags(Config)
 -spec describe_tags(filter_list(), aws_config()) -> ok_error([#ec2_tag{}]).
 describe_tags(Filters, Config)
     when is_list(Filters) orelse Filters =:= none, is_record(Config, aws_config) ->
-    Params = list_to_ec2_filter(Filters),
+    Params = erlcloud_aws:list_to_filter(Filters),
     case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
@@ -3437,7 +3443,7 @@ describe_tags(Filters, MaxResults, NextToken, Config)
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
     Params = [{"MaxResults", MaxResults}, {"NextToken", NextToken}] ++
-             list_to_ec2_filter(Filters),
+             erlcloud_aws:list_to_filter(Filters),
     case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
@@ -3580,123 +3586,28 @@ ec2_query(Config, Action, Params, ApiVersion) ->
 % Exported Query Function with parameter handling
 % Query takes in: 
 % - an aws_config
-% - an ec2 action string: list of possible are found here https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
+%   - an ec2 action string: list of possible are found here https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
 % - a map of query parameters: An example can be found here https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImages.html
     % NOTE: Any fields in the documentation that end in ".N", may just store a list - No need to include ".N".   
 
--spec query(aws_config(), string(), map()) -> ok_error().
-query(Config, Action, Params) when is_map(Params) ->
-    query(Config, Action, Params, [], none, ?API_VERSION).
-
--spec query(aws_config(), string(), map(), list() | atom()) -> ok_error().
-query(Config, Action, Params, Filter) when is_map(Params), is_list(Filter) ->
-    query(Config, Action, Params, Filter, none, ?API_VERSION);
-query(Config, Action, Params, ResponseFormat) when is_map(Params), is_atom(ResponseFormat) ->
-    query(Config, Action, Params, [], ResponseFormat, ?API_VERSION).
-
--spec query(aws_config(), string(), map(), list(), atom()|string()) -> ok_error().
-query(Config, Action, Params, Filter, ResponseFormat) when is_map(Params), is_atom(ResponseFormat), is_list(Filter) ->
-    query(Config, Action, Params, Filter, ResponseFormat, ?API_VERSION);
-query(Config, Action, Params, Filter, ApiVersion) when is_map(Params), is_list(Filter)->
-    query(Config, Action, Params, Filter, none, ApiVersion).
-
--spec query(aws_config(), string(), map(), list(), atom(), string()) -> ok_error().
-query(Config, Action, Params, Filter, ResponseFormat, ApiVersion) when is_map(Params), is_atom(ResponseFormat) ->
-    parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
+-spec query(aws_config(), string(), map(), query_opts()) -> ok_error().
+query(Config, Action, Params, Opts) ->
+    % NewOpts = maps:merge(?OPT_DEFAULTS, Params),
+    ApiVersion= maps:get(version, Opts, ?API_VERSION),
+    Filter = maps:get(filter, Opts, []),
+    ResponseFormat = maps:get(response_format, Opts, undef),
+    erlcloud_aws:parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
 
 do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
-    Params = prepare_action_params(MapParams, Filter),
+    Params = erlcloud_aws:prepare_action_params(MapParams, Filter),
+    io:format("Params ~p~n", [Params]),
     case ec2_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
         {error, _} = E -> E
     end.
 
-% Takes the query response and turns it into a map if desired
-parse_response({ok, Response}, map) ->
-    {ok, _Res} = erlcloud_xml:xml_to_map(Response);
-parse_response({ok, Response}, _) ->
-    {ok, Response};
-parse_response({error, _} = ErrRes, _Format) -> 
-    ErrRes.
-
-% Take parameters in map form, as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
-% and a list for filters 
-prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap);
-prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap) ++ list_to_ec2_filter(Filters). % Add the filters 
-
-% Take a map of parameters as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
-% Handles the formatting of the parameters, such as lists, and nested maps
-map_to_params(Map) ->
-    map_to_params(Map, <<>>).                                        
-map_to_params(Map, ParentKey) when is_map(Map) ->
-    MapList = maps:fold(fun
-        (Key, Value, Acc) ->
-            [ map_to_params({Key, Value}, ParentKey) | Acc]
-    end, [], Map),
-    lists:flatten(MapList);
-map_to_params({Key, Val}, ParentKey) when is_map(Val) ->
-    map_to_params(Val, concat_key(ParentKey, Key));
-map_to_params({Key, Val}, ParentKey) when is_list(Val) ->          
-    generate_param_list(concat_key(ParentKey, Key), Val);
-map_to_params({_Key, []}, _ParentKey) ->
-    [];
-map_to_params({Key, Val}, ParentKey) ->
-    {concat_key(ParentKey, Key), Val}.
-
-% Takes a list and keys, reduces the list to a list of {Key.N, Value} tuples, where N is values index + 1
-generate_param_list(Key, Values) ->
-    generate_param_list(Key, Values, 1, []).
-generate_param_list(_, [], _, Acc) ->
-    lists:reverse(Acc);
-generate_param_list(Key, [Value | Rest], Index, Acc) ->
-    NewKey = concat_key(Key, integer_to_list(Index)),
-    generate_param_list(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
-
-concat_key(<<>>, Key) when is_bitstring(Key); is_atom(Key)  ->
-    to_bitstring(Key);
-concat_key(<<>>, Key) when is_list(Key) -> 
-    Key;
-concat_key(ParentKey, Key) ->
-    BiParentKey = to_bitstring(ParentKey),
-    BiKey = to_bitstring(Key),
-    <<BiParentKey/binary, ".", BiKey/binary>>.
-
-%%% Conversions
-to_bitstring(In) when is_bitstring(In) ->
-    In;
-to_bitstring(In) when is_list(In) ->
-    list_to_binary(In);
-to_bitstring(In) when is_atom(In) ->
-    erlang:atom_to_binary(In, utf8).
-
 default_config() -> erlcloud_aws:default_config().
-
-list_to_ec2_filter(none) ->
-    [];
-list_to_ec2_filter(List) ->
-    list_to_ec2_filter(List, 1, []).
-
-list_to_ec2_filter([], _Count, Res) ->
-    Res;
-list_to_ec2_filter([{N, V}|T], Count, Res)
-    when is_atom(N) ->
-    NewName = [case Char of $_ -> $-; _ -> Char end || Char <- atom_to_list(N)],
-    list_to_ec2_filter([{NewName, V}|T], Count, Res);
-list_to_ec2_filter([{N, V}|T], Count, Res) ->
-    Tup = {io_lib:format("Filter.~p.Name", [Count]), N},
-    Vals = list_to_ec2_values(V, Count, 1, []),
-    list_to_ec2_filter(T, Count + 1, lists:flatten([Tup, Vals, Res])).
-
-list_to_ec2_values([], _Count, _VCount, Res) ->
-    Res;
-list_to_ec2_values([H|T], Count, VCount, Res) when is_list(H) ->
-    Tup = {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), H},
-    list_to_ec2_values(T, Count, VCount + 1, [Tup|Res]);
-list_to_ec2_values(V, Count, VCount, _Res) ->
-    {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), V}.
 
 -spec describe_vpn_gateways() -> ok_error([proplist()]).
 describe_vpn_gateways() ->
@@ -3714,7 +3625,7 @@ describe_vpn_gateways(Filter, Config) ->
 
 -spec describe_vpn_gateways(list(), none | filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_vpn_gateways(VGWIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(VGWIds, "VpnGatewayId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(VGWIds, "VpnGatewayId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeVpnGateways", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             ResultPath = "/DescribeVpnGatewaysResponse/vpnGatewaySet/item",
@@ -3755,7 +3666,7 @@ describe_vpn_connections(Filter, Config) ->
 
 -spec describe_vpn_connections(list(), none | filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_vpn_connections(VpnConnIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(VpnConnIds, "VpnConnectionId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(VpnConnIds, "VpnConnectionId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeVpnConnections", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             ResultPath = "/DescribeVpnConnectionsResponse/vpnConnectionSet/item",
@@ -3792,7 +3703,7 @@ describe_customer_gateways(Filter, Config) ->
 
 -spec describe_customer_gateways(list(), none | filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_customer_gateways(CGWIds, Filter, Config) ->
-    Params = erlcloud_aws:param_list(CGWIds, "CustomerGatewayId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(CGWIds, "CustomerGatewayId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeCustomerGateways", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             ResultPath = "/DescribeCustomerGatewaysResponse/customerGatewaySet/item",
@@ -3882,7 +3793,7 @@ describe_nat_gateways(NatGatewayIds, Config)
 -spec describe_nat_gateways(nat_gateway_ids(), filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_nat_gateways(NatGatewayIds, Filter, Config)
     when is_list(NatGatewayIds), is_list(Filter), is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(NatGatewayIds, "NatGatewayId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(NatGatewayIds, "NatGatewayId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeNatGateways", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             NatGateways = extract_results("DescribeNatGatewaysResponse", "natGatewaySet", fun extract_nat_gateway/1, Doc),
@@ -3908,7 +3819,7 @@ describe_nat_gateways(NatGatewayIds, Filter, MaxResults, NextToken, Config)
          is_integer(MaxResults) andalso MaxResults >= ?NAT_GATEWAYS_MR_MIN andalso MaxResults =< ?NAT_GATEWAYS_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(NatGatewayIds, "NatGatewayId") ++ list_to_ec2_filter(Filter) ++
+    Params = erlcloud_aws:param_list(NatGatewayIds, "NatGatewayId") ++ erlcloud_aws:list_to_filter(Filter) ++
              [{"MaxResults", MaxResults}, {"NextToken", NextToken}],
     case ec2_query(Config, "DescribeNatGateways", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -3973,7 +3884,7 @@ describe_vpc_peering_connections(VpcPeeringConnectionIds, Filter, Config)
     when is_list(VpcPeeringConnectionIds),
          is_list(Filter) orelse Filter =:= none,
          is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(VpcPeeringConnectionIds, "VpcPeeringConnectionId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(VpcPeeringConnectionIds, "VpcPeeringConnectionId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeVpcPeeringConnections", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             AccountAttributes = extract_results("DescribeVpcPeeringConnectionsResponse", "vpcPeeringConnectionSet", fun extract_vpc_peering_connection/1, Doc),
@@ -4053,7 +3964,7 @@ describe_launch_templates(LaunchTemplateIds, Config)
 -spec describe_launch_templates(launch_template_ids(), filter_list(), aws_config()) -> ok_error([proplist()]).
 describe_launch_templates(LaunchTemplateIds, Filter, Config)
     when is_list(LaunchTemplateIds), is_list(Filter), is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(LaunchTemplateIds, "LaunchTemplateId") ++ list_to_ec2_filter(Filter),
+    Params = erlcloud_aws:param_list(LaunchTemplateIds, "LaunchTemplateId") ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeLaunchTemplates", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             LaunchTemplates = extract_results("DescribeLaunchTemplatesResponse", "launchTemplates", fun extract_launch_template/1, Doc),
@@ -4078,7 +3989,7 @@ describe_launch_templates(LaunchTemplateIds, Filter, MaxResults, NextToken, Conf
          is_integer(MaxResults) andalso MaxResults >= ?LAUNCH_TEMPLATES_MR_MIN andalso MaxResults =< ?LAUNCH_TEMPLATES_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
-    Params = erlcloud_aws:param_list(LaunchTemplateIds, "LaunchTemplateId") ++ list_to_ec2_filter(Filter) ++
+    Params = erlcloud_aws:param_list(LaunchTemplateIds, "LaunchTemplateId") ++ erlcloud_aws:list_to_filter(Filter) ++
              [{"MaxResults", MaxResults}, {"NextToken", NextToken}],
     case ec2_query(Config, "DescribeLaunchTemplates", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -4211,7 +4122,7 @@ describe_launch_template_versions(LaunchTemplateId, LaunchTemplateName, Opts, Fi
          is_list(LaunchTemplateName) orelse LaunchTemplateName =:= none,
          is_list(Opts), is_list(Filter), is_record(Config, aws_config) ->
     Params = set_launch_template_selectors(LaunchTemplateId, LaunchTemplateName) ++
-             set_launch_template_version_opts(Opts) ++ list_to_ec2_filter(Filter),
+             set_launch_template_version_opts(Opts) ++ erlcloud_aws:list_to_filter(Filter),
     case ec2_query(Config, "DescribeLaunchTemplateVersions", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             LaunchTemplateVersions = extract_results("DescribeLaunchTemplateVersionsResponse", "launchTemplateVersionSet", fun extract_launch_template_version/1, Doc),
@@ -4235,7 +4146,7 @@ describe_launch_template_versions(LaunchTemplateId, LaunchTemplateName, Opts, Fi
          is_list(NextToken) orelse NextToken =:= undefined,
          is_integer(MaxResults) andalso MaxResults >= ?LAUNCH_TEMPLATES_MR_MIN andalso MaxResults =< ?LAUNCH_TEMPLATES_MR_MAX,
          is_record(Config, aws_config) ->
-    Params = set_launch_template_version_opts(Opts) ++ list_to_ec2_filter(Filter) ++
+    Params = set_launch_template_version_opts(Opts) ++ erlcloud_aws:list_to_filter(Filter) ++
              set_launch_template_selectors(LaunchTemplateId, LaunchTemplateName) ++
              [{"NextToken", NextToken}, {"MaxResults", MaxResults}],
     case ec2_query(Config, "DescribeLaunchTemplateVersions", Params, ?NEW_API_VERSION) of

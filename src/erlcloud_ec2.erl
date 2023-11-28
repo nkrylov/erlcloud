@@ -1468,7 +1468,6 @@ describe_instances(InstanceIDs, Config)
 describe_instances(InstanceIDs, Filter, Config)
     when is_list(InstanceIDs), is_list(Filter) orelse Filter =:= none , is_record(Config, aws_config) ->
     Params = erlcloud_aws:param_list(InstanceIDs, "InstanceId") ++ list_to_ec2_filter(Filter),
-    io:format("Params ~p~n", [Params]),
     case ec2_query(Config, "DescribeInstances", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Results = extract_results("DescribeInstancesResponse", "reservationSet", fun extract_reservation/1, Doc),
@@ -3583,6 +3582,13 @@ ec2_query(Config, Action, Params, ApiVersion) ->
                                   Config#aws_config.ec2_port,
                                   "/", QParams, "ec2", Config).
 
+ec2_query_normalised(Config, Action, Params, ApiVersion) ->
+QParams = [{"Action", Action}, {"Version", ApiVersion}|Params],
+erlcloud_aws:aws_request_xml4(post, Config#aws_config.ec2_protocol,
+                                Config#aws_config.ec2_host,
+                                Config#aws_config.ec2_port,
+                                "/", QParams, "ec2", Config, normalize).
+
 % Exported Query Function with parameter handling
 % Query takes in: 
 % - an aws_config
@@ -3601,7 +3607,7 @@ query(Config, Action, Params, Opts) ->
 do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
     Params = prepare_action_params(MapParams, Filter),
     io:format("Params ~p~n", [Params]),
-    case ec2_query(Config, Action, Params, ApiVersion) of
+    case ec2_query_normalised(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
         {error, _} = E -> E

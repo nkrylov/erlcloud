@@ -5,7 +5,7 @@
          aws_request2/7,
          aws_request_xml2/5, aws_request_xml2/7,
          aws_request4/8, aws_request4/9,
-         aws_request_xml4/6, aws_request_xml4/8,
+         aws_request_xml4/6, aws_request_xml4/8, aws_request_xml4/9,
          aws_region_from_host/1,
          aws_request_form/8,
          aws_request_form_raw/8, aws_request_form_raw/9,
@@ -115,9 +115,12 @@ aws_request_xml2(Method, Protocol, Host, Port, Path, Params, #aws_config{} = Con
 aws_request_xml4(Method, Host, Path, Params, Service, #aws_config{} = Config) ->
     aws_request_xml4(Method, undefined, Host, undefined, Path, Params, Service, Config).
 aws_request_xml4(Method, Protocol, Host, Port, Path, Params, Service, #aws_config{} = Config) ->
+    aws_request_xml4(Method, Protocol, Host, Port, Path, Params, Service, #aws_config{} = Config, undef).
+
+aws_request_xml4(Method, Protocol, Host, Port, Path, Params, Service, #aws_config{} = Config, Format) -> 
     case aws_request4(Method, Protocol, Host, Port, Path, Params, Service, Config) of
         {ok, Body} ->
-            case format_xml_response(Body) of
+            case format_xml_response(Body, Format) of
                 {ok, XML} -> {ok, XML};
                 Error -> {error, Error}
             end;
@@ -359,14 +362,23 @@ raw_xml_response(Body) ->
     end.
 
 format_xml_response(Body) ->
+    format_xml_response(Body, undef).
+
+format_xml_response(Body, normalize) ->
     try 
         {ok, element(1, xmerl_scan:string(binary_to_list(Body), [{space, normalize}]))}
-
-        
+    catch
+        _:_ ->
+            {aws_error, {invalid_xml_response_document, Body}}
+    end;
+format_xml_response(Body, _) ->
+    try 
+        {ok, element(1, xmerl_scan:string(binary_to_list(Body)))}
     catch
         _:_ ->
             {aws_error, {invalid_xml_response_document, Body}}
     end.
+    
 
 %%%---------------------------------------------------------------------------
 -spec default_config() -> aws_config().

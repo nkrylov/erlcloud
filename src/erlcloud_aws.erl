@@ -26,8 +26,9 @@
          is_throttling_error_response/1,
          get_timeout/1,
          profile/0, profile/1, profile/2,
-         parse_response/2, prepare_action_params/2, list_to_filter/1, list_to_filter/3,
-         query/5
+         concat_key/2,
+         to_bitstring/1,value_to_string/1,
+         parse_response/2,
 ]).
 
 -include("erlcloud.hrl").
@@ -1598,41 +1599,6 @@ parse_response({ok, Response}, _) ->
 parse_response({error, _} = ErrRes, _Format) -> 
     ErrRes.
 
-% Take parameters in map form, as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
-% and a list for filters 
-prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap);
-prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap) ++ list_to_filter(Filters). % Add the filters 
-
-% Take a map of parameters as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
-% Handles the formatting of the parameters, such as lists, and nested maps
-map_to_params(Map) ->
-    map_to_params(Map, <<>>).                                        
-map_to_params(Map, ParentKey) when is_map(Map) ->
-    MapList = maps:fold(fun
-        (Key, Value, Acc) ->
-            [ map_to_params({Key, Value}, ParentKey) | Acc]
-    end, [], Map),
-    lists:flatten(MapList);
-map_to_params({Key, Val}, ParentKey) when is_map(Val) ->
-    map_to_params(Val, concat_key(ParentKey, Key));
-map_to_params({Key, Val}, ParentKey) when is_list(Val) ->          
-    generate_param_list(concat_key(ParentKey, Key), Val);
-map_to_params({_Key, []}, _ParentKey) ->
-    [];
-map_to_params({Key, Val}, ParentKey) ->
-    {concat_key(ParentKey, Key), Val}.
-
-% Takes a list and keys, reduces the list to a list of {Key.N, Value} tuples, where N is values index + 1
-generate_param_list(Key, Values) ->
-    generate_param_list(Key, Values, 1, []).
-generate_param_list(_, [], _, Acc) ->
-    lists:reverse(Acc);
-generate_param_list(Key, [Value | Rest], Index, Acc) ->
-    NewKey = concat_key(Key, integer_to_list(Index)),
-    generate_param_list(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
-
 concat_key(<<>>, Key) when is_bitstring(Key); is_atom(Key)  ->
     to_bitstring(Key);
 concat_key(<<>>, Key) when is_list(Key) -> 
@@ -1649,40 +1615,3 @@ to_bitstring(In) when is_list(In) ->
     list_to_binary(In);
 to_bitstring(In) when is_atom(In) ->
     erlang:atom_to_binary(In, utf8).
-
-%%%% FROM erlcloud_ec2 - Other AWS sub-api's also require filters
-
-
-list_to_filter(none) ->
-    [];
-list_to_filter(List) ->
-    list_to_filter(List, 1, []).
-
-list_to_filter([], _Count, Res) ->
-    Res;
-list_to_filter([{N, V}|T], Count, Res)
-    when is_atom(N) ->
-    NewName = [case Char of $_ -> $-; _ -> Char end || Char <- atom_to_list(N)],
-    list_to_filter([{NewName, V}|T], Count, Res);
-list_to_filter([{N, V}|T], Count, Res) ->
-    Tup = {io_lib:format("Filter.~p.Name", [Count]), N},
-    Vals = list_to_values(V, Count, 1, []),
-    list_to_filter(T, Count + 1, lists:flatten([Tup, Vals, Res])).
-
-list_to_values([], _Count, _VCount, Res) ->
-    Res;
-list_to_values([H|T], Count, VCount, Res) when is_list(H) ->
-    Tup = {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), H},
-    list_to_values(T, Count, VCount + 1, [Tup|Res]);
-list_to_values(V, Count, VCount, _Res) ->
-    {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), V}.
-
-
-% Generic Query
--spec query(aws_config(), atom(), string(), map(), query_opts()) -> ok_error().
-query(Config, ec2, Action, Params, Opts) ->
-    erlcloud_ec2:ec2_query(Config, Action, Params, Opts);
-query(Config, autoscale, Action, Params, Opts) ->
-    erlcloud_ec2:ec2_query(Config, Action, Params, Opts);
-query(_Config, _Service, _Action, _Params, _Opts) ->
-    {error, unsupported_api}.

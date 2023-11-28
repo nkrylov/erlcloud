@@ -28,7 +28,7 @@
          profile/0, profile/1, profile/2,
          concat_key/2,
          to_bitstring/1,value_to_string/1,
-         parse_response/2,
+         parse_response/2
 ]).
 
 -include("erlcloud.hrl").

@@ -3583,14 +3583,6 @@ ec2_query(Config, Action, Params, ApiVersion) ->
                                   Config#aws_config.ec2_port,
                                   "/", QParams, "ec2", Config).
 
-% Needed to support query
-% ec2_query_normalised(Config, Action, Params, ApiVersion) ->
-% QParams = [{"Action", Action}, {"Version", ApiVersion}|Params],
-% erlcloud_aws:aws_request_xml4(post, Config#aws_config.ec2_protocol,
-%                                 Config#aws_config.ec2_host,
-%                                 Config#aws_config.ec2_port,
-%                                 "/", QParams, "ec2", Config).
-
 % Exported Query Function with parameter handling
 % Query takes in: 
 % - an aws_config

@@ -28,7 +28,7 @@
          profile/0, profile/1, profile/2,
          concat_key/2,
          to_bitstring/1,value_to_string/1,
-         parse_response/2
+         parse_response/2, process_params/1, process_params/2, process_params/3
 ]).
 
 -include("erlcloud.hrl").
@@ -1613,3 +1613,23 @@ to_bitstring(In) when is_list(In) ->
     list_to_binary(In);
 to_bitstring(In) when is_atom(In) ->
     erlang:atom_to_binary(In, utf8).
+
+process_params(Params) ->
+    process_params(Params, <<>>, <<>>).
+process_params(Params, ParentKey) ->
+    process_params(Params, ParentKey, <<>>).
+process_params(Params, ParentKey, ListPrependStr) when is_map(Params) ->
+    process_params2(maps:to_list(Params), ParentKey, ListPrependStr);
+    
+process_params(Params, ParentKey, ListPrependStr) when is_list(Params) ->
+    Indexes = lists:seq(1, length(Params)),
+    BinIndexes = [ erlcloud_aws:concat_key(ListPrependStr, integer_to_binary(Index)) || Index <- Indexes],
+    process_params2(lists:zip(BinIndexes, Params), ParentKey, ListPrependStr);
+    
+process_params(Value, ParentKey, _)  ->
+    [{ParentKey, Value}].
+    
+process_params2(KV, ParentKey, ListPrependStr) ->
+    [ Result || {Key, Param} <- KV,
+        Result <- process_params(Param, erlcloud_aws:concat_key(ParentKey, Key), ListPrependStr)].
+

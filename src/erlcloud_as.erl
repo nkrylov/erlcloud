@@ -31,7 +31,7 @@
          complete_lifecycle_action/4, complete_lifecycle_action/5,
          record_lifecycle_action_heartbeat/3, record_lifecycle_action_heartbeat/4,
 
-         query/4,prepare_action_params/2
+         query/4,prepare_action_params/1
 ]).
 
 -define(API_VERSION, "2011-01-01").
@@ -89,7 +89,6 @@
 -type ok_error() :: ok | {error, term()}.
 -type query_opts() :: #{
     api_version => string(),
-    filter => filter_list(),
     response_format => map | none
 }.
 
@@ -809,37 +808,14 @@ as_query(Config, Action, Params, ApiVersion) ->
 -spec query(aws_config(), string(), map(), query_opts()) -> ok_error().
 query(Config, Action, Params, Opts) ->
     ApiVersion= maps:get(version, Opts, ?API_VERSION),
-    Filter = maps:get(filter, Opts, []),
     ResponseFormat = maps:get(response_format, Opts, undef),
-    erlcloud_aws:parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
+    erlcloud_aws:parse_response(do_query(Config, Action, Params, ApiVersion), ResponseFormat).
 
-process_params(Params) ->
-    process_params(Params, <<>>).
-process_params(Params, ParentKey) ->
-    process_params(Params, ParentKey, <<".">>).
+prepare_action_params(ParamsMap) when is_map(ParamsMap) ->
+    erlcloud_aws:process_params(ParamsMap, <<>>, "member").
 
-process_params(Params, ParentKey, ListPrependStr) when is_map(Params) ->
-    process_params2(maps:to_list(Params), ParentKey, ListPrependStr);
- 
-process_params(Params, ParentKey, ListPrependStr) when is_list(Params) ->
-    Indexes = lists:seq(1, length(Params)),
-    BinIndexes = [ <<ListPrependStr/binary, (integer_to_binary(Index))/binary>> || Index <- Indexes],
-    process_params2(lists:zip(BinIndexes, Params), ParentKey, ListPrependStr);
- 
-process_params(Value, ParentKey, _)  ->
-    [{ParentKey, Value}].
- 
-process_params2(KV, ParentKey, ListPrependStr) ->
-    [ Result || {Key, Param} <- KV,
-        Result <- process_params(Param, <<ParentKey/binary, ".", Key/binary>>, ListPrependStr)].
-
-prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    process_params(ParamsMap);
-prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    process_params(ParamsMap) ++ process_params(Filters, "Filters"). % Add the filters 
-
-do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
-    Params = prepare_action_params(MapParams, Filter),
+do_query(Config, Action, MapParams, ApiVersion) -> 
+    Params = prepare_action_params(MapParams),
     case as_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};

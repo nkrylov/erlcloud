@@ -210,6 +210,7 @@
          describe_launch_template_versions_all/2, describe_launch_template_versions_all/3,
 
         % Generic Action handler
+        private_ip_params/1 ,prepare_action_params/2,
         query/4
     ]).
 
@@ -3600,14 +3601,13 @@ ec2_query(Config, Action, Params, ApiVersion) ->
 -spec query(aws_config(), string(), map(), query_opts()) -> ok_error().
 query(Config, Action, Params, Opts) ->
     % NewOpts = maps:merge(?OPT_DEFAULTS, Params),
-    ApiVersion= maps:get(version, Opts, ?API_VERSION),
+    ApiVersion= maps:get(version, Opts, ?NEW_API_VERSION),
     Filter = maps:get(filter, Opts, []),
     ResponseFormat = maps:get(response_format, Opts, undef),
     erlcloud_aws:parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
 
 do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
     Params = prepare_action_params(MapParams, Filter),
-    io:format("Params ~p~n", [Params]),
     case ec2_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
@@ -3617,38 +3617,12 @@ do_query(Config, Action, MapParams, Filter, ApiVersion) ->
 % Take parameters in map form, as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
 % and a list for filters 
 prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap);
+    erlcloud_aws:process_params(ParamsMap);
 prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap) ++ list_to_ec2_filter(Filters). % Add the filters 
+    erlcloud_aws:process_params(ParamsMap) ++ list_to_ec2_filter(Filters). % Add the filters 
 
 % Take a map of parameters as specified in https://docs.aws.amazon.com/AWSEC2/latest/APIReference/OperationList-query-ec2.html
 % Handles the formatting of the parameters, such as lists, and nested maps
-map_to_params(Map) ->
-    map_to_params(Map, <<>>).                                        
-map_to_params(Map, ParentKey) when is_map(Map) ->
-    MapList = maps:fold(fun
-        (Key, Value, Acc) ->
-            [ map_to_params({Key, Value}, ParentKey) | Acc]
-    end, [], Map),
-    lists:flatten(MapList);
-map_to_params({Key, Val}, ParentKey) when is_map(Val) ->
-    map_to_params(Val, erlcloud_aws:concat_key(ParentKey, Key));
-map_to_params({Key, Val}, ParentKey) when is_list(Val) ->          
-    generate_param_list(erlcloud_aws:concat_key(ParentKey, Key), Val);
-map_to_params({_Key, []}, _ParentKey) ->
-    [];
-map_to_params({Key, Val}, ParentKey) ->
-    {erlcloud_aws:concat_key(ParentKey, Key), Val}.
-
-% Takes a list and converts to {Key.N, Value}
-generate_param_list(Key, Values) ->
-    generate_param_list(Key, Values, 1, []).
-generate_param_list(_, [], _, Acc) ->
-    lists:reverse(Acc);
-generate_param_list(Key, [Value | Rest], Index, Acc) ->
-    NewKey = erlcloud_aws:concat_key(Key, integer_to_list(Index)),
-    generate_param_list(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
-
 % Take FilterList and convert it to format [{Filter.N.Key, Value}, ...] 
 list_to_ec2_filter(none) ->
     [];
@@ -3661,17 +3635,17 @@ list_to_ec2_filter([{N, V}|T], Count, Res) when is_atom(N) ->
     NewName = erlcloud_aws:value_to_string(N), 
     list_to_ec2_filter([{NewName, V}|T], Count, Res);
 list_to_ec2_filter([{N, V}|T], Count, Res) ->
-    Tup = {io_lib:format("Filter.~p.Name", [Count]), N},
+    Tup = {erlcloud_aws:to_bitstring(io_lib:format("Filter.~p.Name", [Count])), N},
     Vals = list_to_ec2_values(V, Count, 1, []),
     list_to_ec2_filter(T, Count + 1, lists:flatten([Tup, Vals, Res])).
 
 list_to_ec2_values([], _Count, _VCount, Res) ->
     Res;
 list_to_ec2_values([H|T], Count, VCount, Res) when is_list(H) ->
-    Tup = {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), H},
+    Tup = {erlcloud_aws:to_bitstring(io_lib:format("Filter.~p.Value.~p", [Count, VCount])), H},
     list_to_ec2_values(T, Count, VCount + 1, [Tup|Res]);
 list_to_ec2_values(V, Count, VCount, _Res) ->
-    {io_lib:format("Filter.~p.Value.~p", [Count, VCount]), V}.
+    {erlcloud_aws:to_bitstring(io_lib:format("Filter.~p.Value.~p", [Count, VCount])), V}.
 
 default_config() -> erlcloud_aws:default_config().
 

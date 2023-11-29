@@ -3582,12 +3582,13 @@ ec2_query(Config, Action, Params, ApiVersion) ->
                                   Config#aws_config.ec2_port,
                                   "/", QParams, "ec2", Config).
 
-ec2_query_normalised(Config, Action, Params, ApiVersion) ->
-QParams = [{"Action", Action}, {"Version", ApiVersion}|Params],
-erlcloud_aws:aws_request_xml4(post, Config#aws_config.ec2_protocol,
-                                Config#aws_config.ec2_host,
-                                Config#aws_config.ec2_port,
-                                "/", QParams, "ec2", Config, normalize).
+% Needed to support query
+% ec2_query_normalised(Config, Action, Params, ApiVersion) ->
+% QParams = [{"Action", Action}, {"Version", ApiVersion}|Params],
+% erlcloud_aws:aws_request_xml4(post, Config#aws_config.ec2_protocol,
+%                                 Config#aws_config.ec2_host,
+%                                 Config#aws_config.ec2_port,
+%                                 "/", QParams, "ec2", Config).
 
 % Exported Query Function with parameter handling
 % Query takes in: 
@@ -3607,7 +3608,7 @@ query(Config, Action, Params, Opts) ->
 do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
     Params = prepare_action_params(MapParams, Filter),
     io:format("Params ~p~n", [Params]),
-    case ec2_query_normalised(Config, Action, Params, ApiVersion) of
+    case ec2_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
         {error, _} = E -> E

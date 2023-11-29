@@ -31,7 +31,7 @@
          complete_lifecycle_action/4, complete_lifecycle_action/5,
          record_lifecycle_action_heartbeat/3, record_lifecycle_action_heartbeat/4,
 
-         query/4
+         query/4,prepare_action_params/2
 ]).
 
 -define(API_VERSION, "2011-01-01").
@@ -799,13 +799,12 @@ tag_to_member_param(#aws_autoscaling_tag{
       when_defined(ResourceType, {Prefix ++ "ResourceType", ResourceType}, [])
     ].
 
-    %% @TODO:  spec is too general with terms I think
+%% @TODO:  spec is too general with terms I think
 -spec as_query(aws_config(), string(), list({string(), term()}), string()) -> {ok, #xmlElement{}} | {error, term()}.
 as_query(Config, Action, Params, ApiVersion) ->
     QParams = [{"Action", Action}, {"Version", ApiVersion}|Params],
     erlcloud_aws:aws_request_xml4(post, Config#aws_config.as_host,
                                   "/", QParams, "autoscaling", Config).
-
 
 -spec query(aws_config(), string(), map(), query_opts()) -> ok_error().
 query(Config, Action, Params, Opts) ->
@@ -814,65 +813,37 @@ query(Config, Action, Params, Opts) ->
     ResponseFormat = maps:get(response_format, Opts, undef),
     erlcloud_aws:parse_response(do_query(Config, Action, Params, Filter, ApiVersion), ResponseFormat).
 
+process_params(Params) ->
+    process_params(Params, <<>>).
+process_params(Params, ParentKey) ->
+    process_params(Params, ParentKey, <<".">>).
+
+process_params(Params, ParentKey, ListPrependStr) when is_map(Params) ->
+    process_params2(maps:to_list(Params), ParentKey, ListPrependStr);
+ 
+process_params(Params, ParentKey, ListPrependStr) when is_list(Params) ->
+    Indexes = lists:seq(1, length(Params)),
+    BinIndexes = [ <<ListPrependStr/binary, (integer_to_binary(Index))/binary>> || Index <- Indexes],
+    process_params2(lists:zip(BinIndexes, Params), ParentKey, ListPrependStr);
+ 
+process_params(Value, ParentKey, _)  ->
+    [{ParentKey, Value}].
+ 
+process_params2(KV, ParentKey, ListPrependStr) ->
+    [ Result || {Key, Param} <- KV,
+        Result <- process_params(Param, <<ParentKey/binary, ".", Key/binary>>, ListPrependStr)].
+
+prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
+    process_params(ParamsMap);
+prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
+    process_params(ParamsMap) ++ process_params(Filters, "Filters"). % Add the filters 
+
 do_query(Config, Action, MapParams, Filter, ApiVersion) -> 
-    Params = erlcloud_as:prepare_action_params(MapParams, Filter),
+    Params = prepare_action_params(MapParams, Filter),
     case as_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
         {error, _} = E -> E
     end.
-
-% Each service with a "query" needs to implement its own prepare_action_params, as there are variations between services how they should work
-prepare_action_params(ParamsMap, []) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap);
-prepare_action_params(ParamsMap, Filters) when is_map(ParamsMap) ->
-    map_to_params(ParamsMap) ++ list_to_filter(Filters).
-
-
-% Parse params to list of {Key, Value}
-map_to_params(Map) ->
-    map_to_params(Map, <<>>).                                        
-map_to_params(Map, ParentKey) when is_map(Map) ->
-    MapList = maps:fold(fun
-        (Key, Value, Acc) ->
-            [ map_to_params({Key, Value}, ParentKey) | Acc]
-    end, [], Map),
-    lists:flatten(MapList);
-map_to_params({Key, Val}, ParentKey) when is_map(Val) ->
-    map_to_params(Val, erlang_aws:concat_key(ParentKey, Key));
-map_to_params({Key, Val}, ParentKey) when is_list(Val) -> 
-    % Two kinds of list - one is a list of strings, the other is a list of maps
-    case lists:all(fun is_map/1, Val) of
-        true ->
-            ok;
-        false ->
-            generate_param_list(erlang_aws:concat_key(ParentKey, Key), Val)
-        end;
-map_to_params({_Key, []}, _ParentKey) ->
-    [];
-map_to_params({Key, Val}, ParentKey) ->
-    {erlang_aws:concat_key(ParentKey, Key), Val}.
-
-% Takes a list of¦ strings and converts to {Key.N, Value}
-generate_param_list(Key, Values) ->
-    generate_param_list(Key, Values, 1, []).
-generate_param_list(_, [], _, Acc) ->
-    lists:reverse(Acc);
-generate_param_list(Key, [Value | Rest], Index, Acc) ->
-    NewKey = erlang_aws:concat_key(Key, integer_to_list(Index)),
-    generate_param_list(Key, Rest, Index + 1, [{NewKey, Value} | Acc]).    
-
-
-list_to_filter(_) ->
-    ok.
-
-% TODO: We need to two things different in autoscale
-% 1. We may take a list of maps as parameters, this needs to become format
-    % Key with singular values -> [{"ParentKey.member.1.ChildKey", Value}, {"ParentKey.member.2.ChildKey", Value}] 
-    % Key with list -> [{"ParentKey.member.1.ChildKey.member.1", Value}, {"ParentKey.member.1.ChildKey.member.2", Value}, ...]
-    % Key with map -> Same as above ^ just extend parent key.
-% TODO: Filter is a list of maps
-%
-
 
 

@@ -45,17 +45,6 @@
 -define(AWS_SESSION, ["AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN"]).
 -define(AWS_REGION,  ["AWS_DEFAULT_REGION", "AWS_REGION"]).
 
-%% Possible Query Opts
--type query_opts() :: #{
-    api_version => string(),
-    filter => filter_list(),
-    response_format => map | none,
-    http_method => get | post | put | patch | delete
-}.
-
--type filter_list() :: [{string() | atom(),[string()] | string()}] | none.
--type ok_error() :: ok | {error, term()}.
-
 %% types
 -type http_client_result() :: erlcloud_httpc:result().
 -type http_client_headers() :: [{string(), string()}].
@@ -1536,15 +1525,11 @@ profiles_assume( Credential, Role, ExternalId,
         erlcloud_sts:assume_role( Config, Role, Name, Duration, ExtId ),
     {ok, AssumedConfig}.
 
-
 config_credential({Id, Secret}, Config) ->
     Config#aws_config{ access_key_id = Id, secret_access_key = Secret };
 config_credential({Id, Secret, Token}, Config) ->
     Config#aws_config{ access_key_id = Id, secret_access_key = Secret, security_token = Token };
 config_credential(#aws_config{} = Config, _) -> Config.
-
-
-
 
 error_msg( Message ) ->
     Error = iolist_to_binary( Message ),

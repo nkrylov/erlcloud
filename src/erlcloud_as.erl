@@ -85,7 +85,6 @@
         "/RecordLifecycleActionHeartbeatResponse/ResponseMetadata/RequestId").
 
     
--type filter_list() :: [{string() | atom(),[string()] | string()}] | none.
 -type ok_error() :: ok | {error, term()}.
 -type query_opts() :: #{
     api_version => string(),

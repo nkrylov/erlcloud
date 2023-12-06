@@ -3626,7 +3626,7 @@ list_to_ec2_filter(List) ->
 list_to_ec2_filter([], _Count, Res) ->
     Res;
 list_to_ec2_filter([{N, V}|T], Count, Res) when is_atom(N) ->
-    NewName = erlcloud_aws:value_to_string(N), 
+    NewName = erlcloud_aws:to_bitstring([case Char of $_ -> $-; _ -> Char end || Char <- atom_to_list(N)]),
     list_to_ec2_filter([{NewName, V}|T], Count, Res);
 list_to_ec2_filter([{N, V}|T], Count, Res) ->
     Tup = {erlcloud_aws:to_bitstring(io_lib:format("Filter.~p.Name", [Count])), N},

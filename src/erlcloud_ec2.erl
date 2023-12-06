@@ -210,7 +210,7 @@
          describe_launch_template_versions_all/2, describe_launch_template_versions_all/3,
 
         % Generic Action handler
-        private_ip_params/1 ,prepare_action_params/2,
+        private_ip_params/1, prepare_action_params/2,
         query/4
     ]).
 
@@ -3603,6 +3603,8 @@ do_query(Config, Action, MapParams, Filter, ApiVersion) ->
     case ec2_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
+        {error, {http_error, 412, _, _}} -> 
+            {ok, dry_run_success};
         {error, _} = E -> E
     end.
 

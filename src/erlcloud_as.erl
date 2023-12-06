@@ -819,6 +819,8 @@ do_query(Config, Action, MapParams, ApiVersion) ->
     case as_query(Config, Action, Params, ApiVersion) of
         {ok, Results} ->
             {ok, Results};
+        {error, {http_error, 412, _, _}} -> 
+            {ok, dry_run_success};
         {error, _} = E -> E
     end.
 

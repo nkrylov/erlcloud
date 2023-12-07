@@ -285,10 +285,12 @@ do_aws_request_form_raw(Method, Scheme, Host, Port, Path, Form, Headers, QuerySt
                               request_headers = Headers,
                               request_body = Body},
 
+    io:format("AWS Request: ~p ~n", [AwsRequest]),
     %% Note: httpc MUST be used with {timeout, timeout()} option
     %%       Many timeout related failures is observed at prod env
     %%       when library is used in 24/7 manner
     Response = erlcloud_retry:request(Config, AwsRequest, ResultFun),
+    % io:format("AWS Response: ~p ~n", [Response]),
 
     show_headers(ShowRespHeaders, request_to_return(Response)).
 

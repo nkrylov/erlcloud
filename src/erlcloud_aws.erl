@@ -106,6 +106,7 @@ aws_request_xml4(Method, Host, Path, Params, Service, #aws_config{} = Config) ->
 aws_request_xml4(Method, Protocol, Host, Port, Path, Params, Service, #aws_config{} = Config) ->
     case aws_request4(Method, Protocol, Host, Port, Path, Params, Service, Config) of
         {ok, Body} ->
+            io:format("AWS Request: ~p ~n", [Body]),
             case format_xml_response(Body) of
                 {ok, XML} -> {ok, XML};
                 Error -> {error, Error}

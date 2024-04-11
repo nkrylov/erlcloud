@@ -106,7 +106,6 @@ aws_request_xml4(Method, Host, Path, Params, Service, #aws_config{} = Config) ->
 aws_request_xml4(Method, Protocol, Host, Port, Path, Params, Service, #aws_config{} = Config) ->
     case aws_request4(Method, Protocol, Host, Port, Path, Params, Service, Config) of
         {ok, Body} ->
-            io:format("AWS Request: ~p ~n", [Body]),
             case format_xml_response(Body) of
                 {ok, XML} -> {ok, XML};
                 Error -> {error, Error}
@@ -285,12 +284,10 @@ do_aws_request_form_raw(Method, Scheme, Host, Port, Path, Form, Headers, QuerySt
                               request_headers = Headers,
                               request_body = Body},
 
-    io:format("AWS Request: ~p ~n", [AwsRequest]),
     %% Note: httpc MUST be used with {timeout, timeout()} option
     %%       Many timeout related failures is observed at prod env
     %%       when library is used in 24/7 manner
     Response = erlcloud_retry:request(Config, AwsRequest, ResultFun),
-    % io:format("AWS Response: ~p ~n", [Response]),
 
     show_headers(ShowRespHeaders, request_to_return(Response)).
 
